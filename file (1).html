@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Professional Business Prospecting Tool - Find and manage leads with Google Places API">
+    <meta name="theme-color" content="#1a3a52">
+    <title>LeadFinder Pro - Business Prospecting Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-container">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">🎯</div>
+                    <div class="logo-text">
+                        <h1>LeadFinder Pro</h1>
+                        <p class="tagline">Smart Business Discovery & Lead Management</p>
+                    </div>
+                </div>
+                <nav class="header-nav">
+                    <button class="nav-btn theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <button class="nav-btn export-btn" id="exportBtn" aria-label="Export to CSV">
+                        <span class="export-icon">📥</span> Export CSV
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-container">
+        <!-- Search Panel -->
+        <section class="search-panel">
+            <div class="search-card">
+                <h2 class="search-title">Find Businesses</h2>
+                <form class="search-form" id="searchForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="cityInput" class="form-label">City</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">📍</span>
+                                <input 
+                                    type="text" 
+                                    id="cityInput" 
+                                    class="form-input" 
+                                    placeholder="e.g., New York"
+                                    aria-label="City name"
+                                    autocomplete="off"
+                                >
+                            </div>
+                            <span class="error-message" id="cityError"></span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stateInput" class="form-label">State</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">🗺️</span>
+                                <input 
+                                    type="text" 
+                                    id="stateInput" 
+                                    class="form-input" 
+                                    placeholder="e.g., NY"
+                                    aria-label="State abbreviation"
+                                    autocomplete="off"
+                                >
+                            </div>
+                            <span class="error-message" id="stateError"></span>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="categoryInput" class="form-label">Business Category</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">🏢</span>
+                                <input 
+                                    type="text" 
+                                    id="categoryInput" 
+                                    class="form-input" 
+                                    placeholder="e.g., Plumber, Dentist, Lawyer"
+                                    aria-label="Business category"
+                                    autocomplete="off"
+                                >
+                            </div>
+                            <span class="error-message" id="categoryError"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="searchBtn">
+                            <span class="btn-icon">🔍</span> Search Businesses
+                        </button>
+                        <button type="reset" class="btn btn-secondary" id="resetBtn">
+                            <span class="btn-icon">↻</span> Clear
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Recent Searches -->
+                <div class="recent-searches" id="recentSearches" style="display: none;">
+                    <h3 class="recent-title">Recent Searches</h3>
+                    <div class="recent-items" id="recentItems"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Dashboard -->
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card stat-total">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <p class="stat-label">Total Results</p>
+                        <p class="stat-value" id="totalStat">0</p>
+                    </div>
+                </div>
+                <div class="stat-card stat-contacted">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-content">
+                        <p class="stat-label">Contacted</p>
+                        <p class="stat-value" id="contactedStat">0</p>
+                    </div>
+                </div>
+                <div class="stat-card stat-pending">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-content">
+                        <p class="stat-label">Not Contacted</p>
+                        <p class="stat-value" id="pendingStat">0</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filters & Sort -->
+        <section class="filters-section" id="filtersSection" style="display: none;">
+            <div class="filters-card">
+                <div class="filters-group">
+                    <label for="sortSelect" class="filter-label">Sort By:</label>
+                    <select id="sortSelect" class="filter-select">
+                        <option value="newest">Newest First</option>
+                        <option value="rating-high">Highest Rating</option>
+                        <option value="rating-low">Lowest Rating</option>
+                        <option value="reviews">Most Reviews</option>
+                    </select>
+                </div>
+                <div class="filters-group">
+                    <label class="filter-label checkbox-label">
+                        <input type="checkbox" id="contactedFilter" class="filter-checkbox">
+                        <span>Show Only Not Contacted</span>
+                    </label>
+                </div>
+                <button class="btn btn-tertiary" id="clearFiltersBtn">Reset Filters</button>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-header">
+                <h2 class="results-title">Business Results</h2>
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+                <div class="spinner"></div>
+                <p class="loading-text">Searching businesses...</p>
+            </div>
+
+            <!-- Results Grid -->
+            <div class="results-grid" id="resultsGrid"></div>
+
+            <!-- Load More Button -->
+            <div class="pagination-section" id="paginationSection" style="display: none;">
+                <button class="btn btn-primary btn-load-more" id="loadMoreBtn">
+                    <span class="btn-icon">⬇️</span> Load More Results
+                </button>
+            </div>
+        </section>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-icon">🔍</div>
+            <h2 class="empty-title">Start Your Search</h2>
+            <p class="empty-text">Enter a city, state, and business category to discover potential leads</p>
+        </div>
+
+        <!-- No Results State -->
+        <div class="empty-state" id="noResultsState" style="display: none;">
+            <div class="empty-icon">📭</div>
+            <h2 class="empty-title">No Results Found</h2>
+            <p class="empty-text">Try adjusting your search criteria or refining the business category</p>
+        </div>
+    </main>
+
+    <!-- Notes Modal -->
+    <div class="modal" id="notesModal">
+        <div class="modal-overlay" id="modalOverlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Business Notes</h2>
+                <button class="modal-close" id="closeModal" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-business-info">
+                    <h3 id="notesBusinessName"></h3>
+                    <p id="notesBusinessAddress"></p>
+                </div>
+                <textarea 
+                    id="notesTextarea" 
+                    class="notes-textarea" 
+                    placeholder="Add your notes about this business..."
+                    aria-label="Business notes"
+                ></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelNotesBtn">Cancel</button>
+                <button class="btn btn-primary" id="saveNotesBtn">Save Notes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-overlay" id="confirmOverlay"></div>
+        <div class="modal-content modal-confirm">
+            <div class="modal-header">
+                <h2 class="modal-title">Confirm Action</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="confirmCancelBtn">Cancel</button>
+                <button class="btn btn-danger" id="confirmActionBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <span id="toastMessage"></span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 LeadFinder Pro. All rights reserved. | Powered by Google Places API</p>
+    </footer>
+
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4&libraries=places"></script>
+    
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
