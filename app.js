@@ -1,5 +1,5 @@
 // Replace with your Google Maps API key
-const API_KEY = AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4;
+const API_KEY = AIzaSyCmqm0mhA4wWwfxigPsVUfSceZ1KufPu4;
 const RESULTS_PER_PAGE = 100;
 
 // Business Prospector App
