@@ -1,3 +1,9 @@
+// Google Maps API Key
+const GOOGLE_API_KEY = 'AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4';
+
+// Rest of your app.js code...
+
+
 // ============================================
 // LEADFINDER PRO - MAIN APPLICATION
 // ============================================
