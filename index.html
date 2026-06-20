@@ -3,149 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Prospector - Find Local Businesses</title>
+    <title>Business Prospector - Find Local Businesses Without Websites</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1>🎯 Business Prospector</h1>
-                <p>Find local businesses without websites for targeted outreach</p>
-            </div>
+        <header>
+            <h1>🎯 Business Prospector</h1>
+            <p>Find local businesses without websites using Google Maps</p>
         </header>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Search Section -->
-            <section class="search-section">
-                <div class="search-card">
-                    <h2>Search Businesses</h2>
-                    
-                    <div class="search-inputs">
-                        <div class="input-group">
-                            <label for="city">City</label>
-                            <input 
-                                type="text" 
-                                id="city" 
-                                placeholder="e.g., Elizabeth"
-                                autocomplete="off"
-                            >
-                        </div>
-
-                        <div class="input-group">
-                            <label for="state">State</label>
-                            <input 
-                                type="text" 
-                                id="state" 
-                                placeholder="e.g., NJ"
-                                maxlength="2"
-                                autocomplete="off"
-                            >
-                        </div>
-
-                        <div class="input-group">
-                            <label for="category">Business Category</label>
-                            <input 
-                                type="text" 
-                                id="category" 
-                                placeholder="e.g., Contractors, Plumbers"
-                                autocomplete="off"
-                            >
-                        </div>
-                    </div>
-
-                    <button id="searchBtn" class="search-btn">
-                        <span class="btn-text">Search Businesses</span>
-                        <span class="loader hidden"></span>
-                    </button>
-
-                    <div id="errorMessage" class="error-message hidden"></div>
+        <div class="search-section">
+            <div class="search-form">
+                <div class="form-group">
+                    <label for="city">City:</label>
+                    <input type="text" id="city" placeholder="e.g., New York" required>
                 </div>
-            </section>
-
-            <!-- Filter & Controls Section -->
-            <section class="controls-section hidden" id="controlsSection">
-                <div class="controls-card">
-                    <div class="controls-top">
-                        <div class="stats">
-                            <div class="stat">
-                                <span class="stat-label">Total Found:</span>
-                                <span class="stat-value" id="totalCount">0</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-label">Contacted:</span>
-                                <span class="stat-value" id="contactedCount">0</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-label">Not Contacted:</span>
-                                <span class="stat-value" id="notContactedCount">0</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="controls-bottom">
-                        <div class="filter-group">
-                            <label>Filter Results:</label>
-                            <div class="filter-buttons">
-                                <button class="filter-btn active" data-filter="all">All Results</button>
-                                <button class="filter-btn" data-filter="contacted">Contacted</button>
-                                <button class="filter-btn" data-filter="not-contacted">Not Contacted</button>
-                            </div>
-                        </div>
-
-                        <div class="sort-group">
-                            <label for="sortBy">Sort By:</label>
-                            <select id="sortBy">
-                                <option value="rating-desc">Rating (High to Low)</option>
-                                <option value="rating-asc">Rating (Low to High)</option>
-                                <option value="name-asc">Name (A-Z)</option>
-                                <option value="name-desc">Name (Z-A)</option>
-                            </select>
-                        </div>
-
-                        <button id="exportBtn" class="export-btn">📥 Export to CSV</button>
-                    </div>
+                <div class="form-group">
+                    <label for="state">State:</label>
+                    <input type="text" id="state" placeholder="e.g., NY" required>
                 </div>
-            </section>
-
-            <!-- Results Section -->
-            <section class="results-section hidden" id="resultsSection">
-                <div id="resultsList" class="results-list"></div>
-                <div id="noResults" class="no-results hidden">
-                    <p>No businesses found matching your criteria.</p>
+                <div class="form-group">
+                    <label for="category">Business Category:</label>
+                    <input type="text" id="category" placeholder="e.g., Plumber, Restaurant" required>
                 </div>
-                <div id="loadingMore" class="loading-more hidden">
-                    <div class="spinner"></div>
-                    <p>Loading more results...</p>
-                </div>
-            </section>
-        </main>
+                <button id="searchBtn" class="btn-primary">🔍 Search</button>
+            </div>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Business Prospector © 2024 | Data powered by Google Maps</p>
-        </footer>
+            <div id="loadingSpinner" class="spinner">
+                <div class="spin"></div>
+                <p>Searching for businesses...</p>
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label">Total Found</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="contactedCount">0</div>
+                <div class="stat-label">Contacted</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="notContactedCount">0</div>
+                <div class="stat-label">Not Contacted</div>
+            </div>
+        </div>
+
+        <div class="controls-section">
+            <div class="filter-controls">
+                <select id="filterStatus" class="filter-select">
+                    <option value="all">All Businesses</option>
+                    <option value="contacted">Contacted Only</option>
+                    <option value="not-contacted">Not Contacted Only</option>
+                </select>
+
+                <select id="sortBy" class="filter-select">
+                    <option value="rating">Sort by Rating (Highest)</option>
+                    <option value="name">Sort by Name (A-Z)</option>
+                </select>
+            </div>
+
+            <div class="control-buttons">
+                <button id="exportBtn" class="btn-secondary">📥 Export to CSV</button>
+                <button id="clearDataBtn" class="btn-secondary">🗑️ Clear All Data</button>
+            </div>
+        </div>
+
+        <div id="businessesContainer" class="businesses-container">
+            <div class="empty-message">
+                <div class="empty-message-icon">🔍</div>
+                <p>Search for businesses to get started!</p>
+            </div>
+        </div>
+
+        <div class="load-more-section">
+            <div class="load-more-info">
+                Results loaded. Click below to load more.
+            </div>
+            <button class="btn-load-more">Load 100 More Results</button>
+        </div>
     </div>
 
-    <!-- Modals -->
-    <div id="noteModal" class="modal hidden">
+    <!-- Modal for notes -->
+    <div id="notesModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Add Notes</h3>
-                <button class="modal-close">&times;</button>
+                <h2>Add/Edit Notes</h2>
+                <button class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <textarea id="noteText" placeholder="Add your notes here..."></textarea>
+                <textarea id="notesText" placeholder="Add your notes here..."></textarea>
             </div>
             <div class="modal-footer">
-                <button id="savNoteBtn" class="btn-primary">Save Note</button>
-                <button class="btn-secondary modal-close">Cancel</button>
+                <button id="saveNotesBtn" class="btn-primary">💾 Save Notes</button>
+                <button id="cancelNotesBtn" class="btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4&libraries=places"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
     <script src="app.js"></script>
 </body>
+</html>
