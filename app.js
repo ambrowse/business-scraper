@@ -1,475 +1,358 @@
-// ============================================
-// Business Prospector - Main Application
-// ============================================
+// Replace with your Google Maps API key
+const API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+const RESULTS_PER_PAGE = 100;
 
+// Business Prospector App
 class BusinessProspector {
     constructor() {
-        this.apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
         this.businesses = [];
-        this.filteredBusinesses = [];
-        this.currentFilter = 'all';
-        this.currentSort = 'rating-desc';
-        this.contactedIds = new Set();
-        this.excludedIds = new Set();
-        this.notes = new Map();
-        this.currentEditingId = null;
+        this.allSearchResults = []; // Store all results from API
+        this.currentPage = 1;
+        this.nextPageToken = null;
+        this.contactStatus = {};
+        this.businessNotes = {};
+        this.excludedBusinesses = new Set();
+        this.currentSearch = { city: '', state: '', category: '' };
         
-        this.initializeElements();
+        this.initElements();
+        this.loadFromStorage();
         this.attachEventListeners();
-        this.loadFromLocalStorage();
     }
 
-    initializeElements() {
-        // Search Elements
+    initElements() {
         this.cityInput = document.getElementById('city');
         this.stateInput = document.getElementById('state');
         this.categoryInput = document.getElementById('category');
         this.searchBtn = document.getElementById('searchBtn');
-        this.errorMessage = document.getElementById('errorMessage');
-
-        // Controls Elements
-        this.controlsSection = document.getElementById('controlsSection');
-        this.resultsSection = document.getElementById('resultsSection');
-        this.resultsList = document.getElementById('resultsList');
-        this.noResults = document.getElementById('noResults');
-        this.loadingMore = document.getElementById('loadingMore');
-
-        // Stats Elements
-        this.totalCountEl = document.getElementById('totalCount');
-        this.contactedCountEl = document.getElementById('contactedCount');
-        this.notContactedCountEl = document.getElementById('notContactedCount');
-
-        // Filter & Sort Elements
-        this.filterBtns = document.querySelectorAll('.filter-btn');
+        this.spinner = document.getElementById('loadingSpinner');
+        this.container = document.getElementById('businessesContainer');
+        this.filterSelect = document.getElementById('filterStatus');
         this.sortSelect = document.getElementById('sortBy');
         this.exportBtn = document.getElementById('exportBtn');
-
-        // Modal Elements
-        this.noteModal = document.getElementById('noteModal');
-        this.noteText = document.getElementById('noteText');
-        this.saveNoteBtn = document.getElementById('savNoteBtn');
-        this.modalCloseButtons = document.querySelectorAll('.modal-close');
+        this.clearDataBtn = document.getElementById('clearDataBtn');
+        this.notesModal = document.getElementById('notesModal');
+        this.saveNotesBtn = document.getElementById('saveNotesBtn');
+        this.cancelNotesBtn = document.getElementById('cancelNotesBtn');
+        this.notesText = document.getElementById('notesText');
+        this.loadMoreSection = document.querySelector('.load-more-section');
+        this.btnLoadMore = document.querySelector('.btn-load-more');
     }
 
     attachEventListeners() {
-        this.searchBtn.addEventListener('click', () => this.handleSearch());
+        this.searchBtn.addEventListener('click', () => this.newSearch());
+        this.filterSelect.addEventListener('change', () => this.render());
+        this.sortSelect.addEventListener('change', () => this.render());
+        this.exportBtn.addEventListener('click', () => this.exportCSV());
+        this.clearDataBtn.addEventListener('click', () => this.clearAllData());
+        this.cancelNotesBtn.addEventListener('click', () => this.closeNotesModal());
+        this.saveNotesBtn.addEventListener('click', () => this.saveNotes());
+        
+        document.querySelector('.close-btn').addEventListener('click', () => this.closeNotesModal());
+        
+        if (this.btnLoadMore) {
+            this.btnLoadMore.addEventListener('click', () => this.loadMore());
+        }
+        
         this.cityInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleSearch();
+            if (e.key === 'Enter') this.newSearch();
         });
         this.stateInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleSearch();
+            if (e.key === 'Enter') this.newSearch();
         });
         this.categoryInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleSearch();
-        });
-
-        // Filter buttons
-        this.filterBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.filterBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.currentFilter = e.target.dataset.filter;
-                this.applyFiltersAndSort();
-            });
-        });
-
-        // Sort select
-        this.sortSelect.addEventListener('change', (e) => {
-            this.currentSort = e.target.value;
-            this.applyFiltersAndSort();
-        });
-
-        // Export button
-        this.exportBtn.addEventListener('click', () => this.exportToCSV());
-
-        // Modal close buttons
-        this.modalCloseButtons.forEach(btn => {
-            btn.addEventListener('click', () => this.closeModal());
-        });
-
-        this.saveNoteBtn.addEventListener('click', () => this.saveNote());
-        
-        // Close modal when clicking outside
-        this.noteModal.addEventListener('click', (e) => {
-            if (e.target === this.noteModal) {
-                this.closeModal();
-            }
+            if (e.key === 'Enter') this.newSearch();
         });
     }
 
-    async handleSearch() {
+    newSearch() {
         const city = this.cityInput.value.trim();
-        const state = this.stateInput.value.trim().toUpperCase();
+        const state = this.stateInput.value.trim();
         const category = this.categoryInput.value.trim();
 
-        // Validation
         if (!city || !state || !category) {
-            this.showError('Please fill in all fields');
+            alert('Please fill in all fields');
             return;
         }
 
-        if (state.length !== 2) {
-            this.showError('Please enter a valid 2-letter state code');
-            return;
-        }
+        this.currentSearch = { city, state, category };
+        this.currentPage = 1;
+        this.allSearchResults = [];
+        this.nextPageToken = null;
+        this.businesses = [];
+        
+        this.search();
+    }
 
-        this.clearError();
-        this.setSearchLoading(true);
+    search() {
+        this.spinner.style.display = 'block';
 
         try {
-            const query = `${category} in ${city}, ${state}`;
-            await this.searchBusinesses(query);
-            this.updateStats();
-            this.applyFiltersAndSort();
-            this.showResults();
+            const { city, state, category } = this.currentSearch;
+            const service = new google.maps.places.PlacesService(
+                document.createElement('div')
+            );
+
+            const request = {
+                query: `${category} in ${city}, ${state}`,
+                type: 'establishment',
+            };
+
+            // Add pagination token if available
+            if (this.nextPageToken) {
+                request.pageToken = this.nextPageToken;
+            }
+
+            service.textSearch(request, (results, status, pagination) => {
+                this.spinner.style.display = 'none';
+
+                if (status === google.maps.places.PlacesServiceStatus.OK) {
+                    // Add results to all search results
+                    const processedResults = results.map((place) => ({
+                        id: place.place_id,
+                        name: place.name,
+                        category: category,
+                        rating: place.rating || 'N/A',
+                        address: place.formatted_address,
+                        phone: place.formatted_phone_number || 'Not available',
+                        website: place.website || 'No website',
+                        placeId: place.place_id,
+                    }));
+
+                    this.allSearchResults.push(...processedResults);
+                    
+                    // Store pagination token for next page
+                    if (pagination && pagination.hasNextPage) {
+                        this.nextPageToken = pagination.nextPageToken;
+                    } else {
+                        this.nextPageToken = null;
+                    }
+
+                    // Show only first 100 results
+                    this.businesses = this.allSearchResults.slice(0, RESULTS_PER_PAGE);
+                    this.render();
+
+                } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                    alert('No businesses found. Try different search terms.');
+                    this.render();
+                } else {
+                    alert(`Search error: ${status}`);
+                }
+            });
         } catch (error) {
-            this.showError(`Search failed: ${error.message}`);
+            this.spinner.style.display = 'none';
             console.error('Search error:', error);
-        } finally {
-            this.setSearchLoading(false);
+            alert('Error during search. Make sure your API key is valid.');
         }
     }
 
-    async searchBusinesses(query) {
-        // Simulated API call - In production, use Google Maps Places API
-        // This is a mock implementation for demonstration
+    loadMore() {
+        if (!this.nextPageToken) {
+            alert('No more results available');
+            return;
+        }
+
+        this.btnLoadMore.disabled = true;
+        this.btnLoadMore.textContent = 'Loading...';
         
-        return new Promise((resolve) => {
-            // Simulate API delay
-            setTimeout(() => {
-                this.businesses = this.generateMockBusinesses(query);
-                resolve();
-            }, 1500);
-        });
+        this.search();
+        
+        // After search completes, update view
+        setTimeout(() => {
+            this.businesses = this.allSearchResults.slice(0, this.allSearchResults.length);
+            this.render();
+            this.btnLoadMore.disabled = false;
+            this.btnLoadMore.textContent = `Load More Results (${Math.min(RESULTS_PER_PAGE, this.allSearchResults.length - RESULTS_PER_PAGE)} remaining)`;
+        }, 1000);
     }
 
-    generateMockBusinesses(query) {
-        // Mock data generation for demonstration
-        const mockBusinesses = [
-            {
-                id: '1',
-                name: 'Premier Contracting Solutions',
-                category: 'General Contractor',
-                phone: '+1 (908) 555-0101',
-                address: '123 Main St, Elizabeth, NJ 07201',
-                rating: 4.8,
-                reviews: 47,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Premier+Contracting',
-                hasWebsite: false
-            },
-            {
-                id: '2',
-                name: 'Elite Plumbing & HVAC',
-                category: 'Plumbing',
-                phone: '+1 (908) 555-0102',
-                address: '456 Oak Ave, Elizabeth, NJ 07202',
-                rating: 4.6,
-                reviews: 32,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Elite+Plumbing',
-                hasWebsite: false
-            },
-            {
-                id: '3',
-                name: 'Quality Electrical Services',
-                category: 'Electrical',
-                phone: '+1 (908) 555-0103',
-                address: '789 Pine Rd, Elizabeth, NJ 07203',
-                rating: 4.9,
-                reviews: 56,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Quality+Electrical',
-                hasWebsite: false
-            },
-            {
-                id: '4',
-                name: 'Thompson Construction Co',
-                category: 'General Contractor',
-                phone: '+1 (908) 555-0104',
-                address: '321 Elm St, Elizabeth, NJ 07201',
-                rating: 4.5,
-                reviews: 28,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Thompson+Construction',
-                hasWebsite: false
-            },
-            {
-                id: '5',
-                name: 'Swift Roofing & Repair',
-                category: 'Roofing',
-                phone: '+1 (908) 555-0105',
-                address: '654 Cedar Ln, Elizabeth, NJ 07204',
-                rating: 4.7,
-                reviews: 41,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Swift+Roofing',
-                hasWebsite: false
-            },
-            {
-                id: '6',
-                name: 'Modern Home Renovations',
-                category: 'Home Renovation',
-                phone: '+1 (908) 555-0106',
-                address: '987 Birch Dr, Elizabeth, NJ 07205',
-                rating: 4.4,
-                reviews: 19,
-                website: null,
-                mapsUrl: 'https://maps.google.com/?q=Modern+Home+Renovations',
-                hasWebsite: false
-            }
-        ];
+    render() {
+        let filtered = this.businesses.filter(b => !this.excludedBusinesses.has(b.id));
 
-        return mockBusinesses;
+        const status = this.filterSelect.value;
+        if (status === 'contacted') {
+            filtered = filtered.filter(b => this.contactStatus[b.id]);
+        } else if (status === 'not-contacted') {
+            filtered = filtered.filter(b => !this.contactStatus[b.id]);
+        }
+
+        const sortBy = this.sortSelect.value;
+        if (sortBy === 'rating') {
+            filtered.sort((a, b) => {
+                const ratingA = typeof a.rating === 'number' ? a.rating : 0;
+                const ratingB = typeof b.rating === 'number' ? b.rating : 0;
+                return ratingB - ratingA;
+            });
+        } else if (sortBy === 'name') {
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        this.updateStats();
+        this.updateLoadMoreSection();
+
+        if (filtered.length === 0) {
+            this.container.innerHTML = `
+                <div class="empty-message">
+                    <div class="empty-message-icon">🔍</div>
+                    <p>No businesses found matching your criteria</p>
+                </div>
+            `;
+            return;
+        }
+
+        this.container.innerHTML = filtered.map(business => `
+            <div class="business-card">
+                <div class="business-name">${this.escapeHtml(business.name)}</div>
+                <div class="business-category">${this.escapeHtml(business.category)}</div>
+                <div class="business-rating">
+                    ⭐ ${typeof business.rating === 'number' ? business.rating.toFixed(1) : business.rating}
+                    <span>${business.rating !== 'N/A' ? '(Google Reviews)' : ''}</span>
+                </div>
+                <div class="business-info">
+                    <div class="business-contact">
+                        <strong>Phone:</strong>
+                        <span>${this.escapeHtml(business.phone)}</span>
+                    </div>
+                    <div class="business-contact">
+                        <strong>Website:</strong>
+                        ${business.website === 'No website' 
+                            ? `<span style="color: #e74c3c;">${business.website}</span>` 
+                            : `<a href="${this.escapeHtml(business.website)}" target="_blank">${this.escapeHtml(business.website)}</a>`
+                        }
+                    </div>
+                    <div class="business-address">
+                        <strong>Address:</strong>
+                        <span>${this.escapeHtml(business.address)}</span>
+                    </div>
+                    ${this.businessNotes[business.id] ? `
+                        <div class="business-notes-display">
+                            <strong>📝 Your Notes:</strong>
+                            ${this.escapeHtml(this.businessNotes[business.id])}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="business-actions">
+                    <button class="action-btn btn-contacted ${this.contactStatus[business.id] ? 'active' : ''}" 
+                        onclick="app.toggleContacted('${business.id}')">
+                        ${this.contactStatus[business.id] ? '✓ Contacted' : '📞 Mark Contacted'}
+                    </button>
+                    <button class="action-btn btn-notes" onclick="app.openNotesModal('${business.id}', '${this.escapeHtml(business.name)}')">
+                        📝 Notes
+                    </button>
+                    <button class="action-btn btn-maps" onclick="window.open('https://www.google.com/maps/place/?q=place_id:${business.placeId}', '_blank')">
+                        🗺️ Maps
+                    </button>
+                    <button class="action-btn btn-exclude" onclick="app.excludeBusiness('${business.id}')">
+                        ✕ Exclude
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        // Scroll to businesses
+        this.container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    updateLoadMoreSection() {
+        if (!this.loadMoreSection) return;
+
+        const totalLoaded = this.allSearchResults.length;
+        const hasMore = this.nextPageToken !== null;
+
+        if (totalLoaded >= RESULTS_PER_PAGE && hasMore) {
+            this.loadMoreSection.classList.add('show');
+            const remaining = Math.min(RESULTS_PER_PAGE, 
+                this.allSearchResults.length + RESULTS_PER_PAGE);
+            this.loadMoreSection.innerHTML = `
+                <div class="load-more-info">
+                    Showing <strong>${Math.min(RESULTS_PER_PAGE, this.allSearchResults.length)}</strong> of <strong>100+</strong> results
+                </div>
+                <button class="btn-load-more" onclick="app.loadMore()">
+                    Load 100 More Results
+                </button>
+            `;
+        } else if (totalLoaded >= RESULTS_PER_PAGE && !hasMore) {
+            this.loadMoreSection.classList.add('show');
+            this.loadMoreSection.innerHTML = `
+                <div class="load-more-info">
+                    Showing all <strong>${totalLoaded}</strong> results
+                </div>
+            `;
+        } else {
+            this.loadMoreSection.classList.remove('show');
+        }
+    }
+
+    toggleContacted(businessId) {
+        this.contactStatus[businessId] = !this.contactStatus[businessId];
+        this.saveToStorage();
+        this.render();
+    }
+
+    openNotesModal(businessId, businessName) {
+        this.currentEditingId = businessId;
+        this.notesText.value = this.businessNotes[businessId] || '';
+        this.notesModal.classList.add('show');
+        document.querySelector('.modal-header h2').textContent = `Notes for ${businessName}`;
+        this.notesText.focus();
+    }
+
+    closeNotesModal() {
+        this.notesModal.classList.remove('show');
+    }
+
+    saveNotes() {
+        if (this.currentEditingId) {
+            const notes = this.notesText.value.trim();
+            if (notes) {
+                this.businessNotes[this.currentEditingId] = notes;
+            } else {
+                delete this.businessNotes[this.currentEditingId];
+            }
+            this.saveToStorage();
+            this.closeNotesModal();
+            this.render();
+        }
+    }
+
+    excludeBusiness(businessId) {
+        this.excludedBusinesses.add(businessId);
+        this.saveToStorage();
+        this.render();
     }
 
     updateStats() {
-        const total = this.businesses.length;
-        const contacted = Array.from(this.contactedIds).filter(id => 
-            this.businesses.some(b => b.id === id)
+        const total = this.businesses.filter(b => !this.excludedBusinesses.has(b.id)).length;
+        const contacted = this.businesses.filter(
+            b => !this.excludedBusinesses.has(b.id) && this.contactStatus[b.id]
         ).length;
         const notContacted = total - contacted;
 
-        this.totalCountEl.textContent = total;
-        this.contactedCountEl.textContent = contacted;
-        this.notContactedCountEl.textContent = notContacted;
+        document.getElementById('totalCount').textContent = total;
+        document.getElementById('contactedCount').textContent = contacted;
+        document.getElementById('notContactedCount').textContent = notContacted;
     }
 
-    applyFiltersAndSort() {
-        // Filter
-        this.filteredBusinesses = this.businesses.filter(business => {
-            if (this.excludedIds.has(business.id)) return false;
-            
-            if (this.currentFilter === 'contacted') {
-                return this.contactedIds.has(business.id);
-            } else if (this.currentFilter === 'not-contacted') {
-                return !this.contactedIds.has(business.id);
-            }
-            return true;
-        });
-
-        // Sort
-        this.filteredBusinesses.sort((a, b) => {
-            switch (this.currentSort) {
-                case 'rating-desc':
-                    return b.rating - a.rating;
-                case 'rating-asc':
-                    return a.rating - b.rating;
-                case 'name-asc':
-                    return a.name.localeCompare(b.name);
-                case 'name-desc':
-                    return b.name.localeCompare(a.name);
-                default:
-                    return 0;
-            }
-        });
-
-        this.renderResults();
-    }
-
-    renderResults() {
-        this.resultsList.innerHTML = '';
-
-        if (this.filteredBusinesses.length === 0) {
-            this.noResults.classList.remove('hidden');
-            return;
-        }
-
-        this.noResults.classList.add('hidden');
-
-        this.filteredBusinesses.forEach(business => {
-            const card = this.createBusinessCard(business);
-            this.resultsList.appendChild(card);
-        });
-    }
-
-    createBusinessCard(business) {
-        const div = document.createElement('div');
-        div.className = 'business-card';
-        div.dataset.businessId = business.id;
-
-        const isContacted = this.contactedIds.has(business.id);
-        const note = this.notes.get(business.id) || '';
-
-        div.innerHTML = `
-            <div class="business-header">
-                <div class="business-title">
-                    <div class="business-name">${this.escapeHtml(business.name)}</div>
-                    <div class="business-category">${this.escapeHtml(business.category)}</div>
-                </div>
-                <div class="rating-badge">
-                    ⭐ ${business.rating} (${business.reviews})
-                </div>
-            </div>
-
-            <div class="business-details">
-                <div class="detail-item">
-                    <div class="detail-icon">📱</div>
-                    <div class="detail-content">
-                        <div class="detail-label">Phone Number</div>
-                        <div class="detail-text">
-                            <a href="tel:${business.phone}" class="phone-link">${business.phone}</a>
-                            <button class="copy-btn" data-copy="${business.phone}" title="Copy phone">📋</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="detail-item">
-                    <div class="detail-icon">📍</div>
-                    <div class="detail-content">
-                        <div class="detail-label">Address</div>
-                        <div class="detail-text">${this.escapeHtml(business.address)}</div>
-                    </div>
-                </div>
-
-                ${note ? `
-                <div class="detail-item">
-                    <div class="detail-icon">📝</div>
-                    <div class="detail-content">
-                        <div class="detail-label">Your Notes</div>
-                        <div class="detail-text">${this.escapeHtml(note)}</div>
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 16px; flex-wrap: wrap;">
-                <label class="contact-checkbox">
-                    <input type="checkbox" class="contact-check" ${isContacted ? 'checked' : ''}>
-                    <span>Contacted</span>
-                </label>
-                ${note ? `<span style="font-size: 0.85rem; color: var(--text-secondary);">Has notes</span>` : ''}
-            </div>
-
-            <div class="business-actions">
-                <a href="${business.mapsUrl}" target="_blank" class="action-btn">
-                    🗺️ View on Maps
-                </a>
-                <button class="action-btn note-btn">
-                    📝 ${note ? 'Edit' : 'Add'} Notes
-                </button>
-                <button class="action-btn delete">
-                    🗑️ Remove
-                </button>
-            </div>
-        `;
-
-        // Event listeners
-        const contactCheck = div.querySelector('.contact-check');
-        contactCheck.addEventListener('change', () => {
-            this.toggleContactStatus(business.id);
-        });
-
-        const noteBtn = div.querySelector('.note-btn');
-        noteBtn.addEventListener('click', () => {
-            this.openNoteModal(business.id);
-        });
-
-        const deleteBtn = div.querySelector('.action-btn.delete');
-        deleteBtn.addEventListener('click', () => {
-            this.removeBusiness(business.id);
-        });
-
-        const copyBtns = div.querySelectorAll('[data-copy]');
-        copyBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.copyToClipboard(btn.dataset.copy);
-            });
-        });
-
-        return div;
-    }
-
-    toggleContactStatus(businessId) {
-        if (this.contactedIds.has(businessId)) {
-            this.contactedIds.delete(businessId);
-        } else {
-            this.contactedIds.add(businessId);
-        }
-        this.saveToLocalStorage();
-        this.updateStats();
-    }
-
-    removeBusiness(businessId) {
-        if (confirm('Are you sure you want to remove this business?')) {
-            this.excludedIds.add(businessId);
-            this.saveToLocalStorage();
-            this.applyFiltersAndSort();
-            this.updateStats();
-        }
-    }
-
-    openNoteModal(businessId) {
-        this.currentEditingId = businessId;
-        this.noteText.value = this.notes.get(businessId) || '';
-        this.noteModal.classList.remove('hidden');
-        this.noteText.focus();
-    }
-
-    closeModal() {
-        this.noteModal.classList.add('hidden');
-        this.currentEditingId = null;
-    }
-
-    saveNote() {
-        if (this.currentEditingId) {
-            const note = this.noteText.value.trim();
-            if (note) {
-                this.notes.set(this.currentEditingId, note);
-            } else {
-                this.notes.delete(this.currentEditingId);
-            }
-            this.saveToLocalStorage();
-            this.applyFiltersAndSort();
-            this.closeModal();
-        }
-    }
-
-    copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            // Show temporary feedback
-            const originalText = event.target.textContent;
-            event.target.textContent = '✓ Copied!';
-            setTimeout(() => {
-                event.target.textContent = originalText;
-            }, 1500);
-        }).catch(() => {
-            alert('Failed to copy to clipboard');
-        });
-    }
-
-    exportToCSV() {
-        if (this.filteredBusinesses.length === 0) {
+    exportCSV() {
+        if (this.allSearchResults.length === 0) {
             alert('No businesses to export');
             return;
         }
 
-        const headers = ['Name', 'Category', 'Phone', 'Address', 'Rating', 'Website Status', 'Contacted', 'Notes', 'Google Maps URL'];
-        const rows = this.filteredBusinesses.map(business => [
-            business.name,
-            business.category,
-            business.phone,
-            business.address,
-            business.rating,
-            business.hasWebsite ? 'Has Website' : 'No Website',
-            this.contactedIds.has(business.id) ? 'Yes' : 'No',
-            this.notes.get(business.id) || '',
-            business.mapsUrl
-        ]);
+        let csv = 'Name,Category,Rating,Phone,Website,Address,Status,Notes\n';
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => 
-                row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-            )
-        ].join('\n');
+        this.allSearchResults.forEach(business => {
+            const status = this.contactStatus[business.id] ? 'Contacted' : 'Not Contacted';
+            const notes = (this.businessNotes[business.id] || '').replace(/"/g, '""');
+            
+            csv += `"${business.name.replace(/"/g, '""')}","${business.category}","${business.rating}","${business.phone}","${business.website}","${business.address}","${status}","${notes}"\n`;
+        });
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         
         link.setAttribute('href', url);
-        link.setAttribute('download', `business-prospector-${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `businesses-${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
         
         document.body.appendChild(link);
@@ -477,65 +360,62 @@ class BusinessProspector {
         document.body.removeChild(link);
     }
 
-    showResults() {
-        this.controlsSection.classList.remove('hidden');
-        this.resultsSection.classList.remove('hidden');
-    }
-
-    showError(message) {
-        this.errorMessage.textContent = message;
-        this.errorMessage.classList.remove('hidden');
-    }
-
-    clearError() {
-        this.errorMessage.classList.add('hidden');
-    }
-
-    setSearchLoading(isLoading) {
-        this.searchBtn.disabled = isLoading;
-        const loader = this.searchBtn.querySelector('.loader');
-        const btnText = this.searchBtn.querySelector('.btn-text');
-        
-        if (isLoading) {
-            loader.classList.remove('hidden');
-            btnText.textContent = 'Searching...';
-        } else {
-            loader.classList.add('hidden');
-            btnText.textContent = 'Search Businesses';
-        }
-    }
-
-    saveToLocalStorage() {
-        const data = {
-            contacted: Array.from(this.contactedIds),
-            excluded: Array.from(this.excludedIds),
-            notes: Object.fromEntries(this.notes)
-        };
-        localStorage.setItem('businessProspectorData', JSON.stringify(data));
-    }
-
-    loadFromLocalStorage() {
-        const stored = localStorage.getItem('businessProspectorData');
-        if (stored) {
-            try {
-                const data = JSON.parse(stored);
-                this.contactedIds = new Set(data.contacted || []);
-                this.excludedIds = new Set(data.excluded || []);
-                this.notes = new Map(Object.entries(data.notes || {}));
-            } catch (error) {
-                console.error('Error loading from localStorage:', error);
-            }
+    clearAllData() {
+        if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+            this.businesses = [];
+            this.allSearchResults = [];
+            this.contactStatus = {};
+            this.businessNotes = {};
+            this.excludedBusinesses.clear();
+            this.currentPage = 1;
+            this.nextPageToken = null;
+            this.currentSearch = { city: '', state: '', category: '' };
+            
+            this.saveToStorage();
+            this.render();
         }
     }
 
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    saveToStorage() {
+        localStorage.setItem('businesses', JSON.stringify(this.businesses));
+        localStorage.setItem('allSearchResults', JSON.stringify(this.allSearchResults));
+        localStorage.setItem('contactStatus', JSON.stringify(this.contactStatus));
+        localStorage.setItem('businessNotes', JSON.stringify(this.businessNotes));
+        localStorage.setItem('excludedBusinesses', JSON.stringify(Array.from(this.excludedBusinesses)));
+        localStorage.setItem('currentSearch', JSON.stringify(this.currentSearch));
+        localStorage.setItem('currentPage', this.currentPage);
+    }
+
+    loadFromStorage() {
+        this.businesses = JSON.parse(localStorage.getItem('businesses') || '[]');
+        this.allSearchResults = JSON.parse(localStorage.getItem('allSearchResults') || '[]');
+        this.contactStatus = JSON.parse(localStorage.getItem('contactStatus') || '{}');
+        this.businessNotes = JSON.parse(localStorage.getItem('businessNotes') || '{}');
+        this.excludedBusinesses = new Set(JSON.parse(localStorage.getItem('excludedBusinesses') || '[]'));
+        this.currentSearch = JSON.parse(localStorage.getItem('currentSearch') || '{"city":"","state":"","category":""}');
+        this.currentPage = parseInt(localStorage.getItem('currentPage') || '1');
     }
 }
 
-// Initialize the application when DOM is ready
+// Initialize app when DOM is ready
+let app;
 document.addEventListener('DOMContentLoaded', () => {
-    new BusinessProspector();
+    // Check if API key is set
+    if (API_KEY === 'YOUR_GOOGLE_MAPS_API_KEY') {
+        alert('⚠️ Please set your Google Maps API key in app.js before using this app.\n\nInstructions:\n1. Go to Google Cloud Console (console.cloud.google.com)\n2. Create a new project\n3. Enable these APIs: Places API, Maps JavaScript API, Geocoding API\n4. Create an API Key (Credentials)\n5. Copy the key and replace "YOUR_GOOGLE_MAPS_API_KEY" in app.js\n\nYour key should look like: AIzaSyD...');
+        return;
+    }
+    
+    app = new BusinessProspector();
 });
