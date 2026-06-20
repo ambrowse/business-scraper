@@ -1223,3 +1223,176 @@ a:hover {
         border: 1px solid #ccc;
     }
 }
+
+/* Business Card Styling - FIXED */
+.business-card {
+  background: linear-gradient(135deg, #0f2744 0%, #1a3a52 100%);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.business-card:hover {
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.business-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.business-info {
+  flex: 1;
+  min-width: 0; /* Important for text truncation */
+}
+
+.business-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #00d4ff;
+  margin: 0 0 6px 0;
+  word-break: break-word;
+}
+
+.business-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #a0aec0;
+}
+
+.business-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  word-break: break-word;
+}
+
+.business-detail-item a {
+  color: #00d4ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.business-detail-item a:hover {
+  text-decoration: underline;
+}
+
+.business-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #10b981;
+  width: fit-content;
+}
+
+.star {
+  color: #fbbf24;
+  font-size: 14px;
+}
+
+.business-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.business-buttons button {
+  padding: 8px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-contact {
+  background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+  color: #0f2744;
+  font-weight: 600;
+}
+
+.btn-contact:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+}
+
+.btn-contact:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: rgba(160, 174, 192, 0.1);
+  color: #a0aec0;
+  border: 1px solid rgba(160, 174, 192, 0.3);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(160, 174, 192, 0.2);
+  border-color: rgba(160, 174, 192, 0.5);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-exclude {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-exclude:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Ensure business cards don't exceed container width */
+.business-results {
+  width: 100%;
+  overflow: hidden;
+}
+
+.business-card {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+  .business-buttons {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .business-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .business-card {
+    padding: 12px;
+    gap: 10px;
+  }
+}
+
