@@ -4,893 +4,378 @@ const GOOGLE_API_KEY = 'AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4';
 // Rest of your app.js code...
 
 
-// ============================================
-// LEADFINDER PRO - MAIN APPLICATION
-// ============================================
+// app.js - LeadFinder Pro Business Scraper
+// Complete application logic with phone number display
 
-console.log('LeadFinder Pro v1.0 - Initializing...');
-
-// ============================================
-// GLOBAL STATE & CONFIGURATION
-// ============================================
-
-const CONFIG = {
-    GOOGLE_API_KEY: 'AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4',
-    API_LOAD_DELAY: 2000,
-    STORAGE_KEYS: {
-        SEARCHES: 'lf_recent_searches',
-        BUSINESSES: 'lf_businesses',
-        CONTACTED: 'lf_contacted',
-        NOTES: 'lf_notes',
-        EXCLUDED: 'lf_excluded',
-        THEME: 'lf_theme'
-    },
-    MAX_RESULTS_PER_PAGE: 20,
-    MAX_RECENT_SEARCHES: 5
-};
-
-let appState = {
-    currentSearch: null,
-    businesses: [],
-    filteredBusinesses: [],
-    nextPageToken: null,
-    isSearching: false,
-    sortBy: 'newest',
-    filterNotContacted: false,
-    selectedBusinessForNotes: null,
-    placesService: null,
-    mapsLoaded: false
-};
+const API_KEY = 'AIzaSyCmqm0mhA4wWwfxigPsVUf-SceZ1KufPu4';
 
 // ============================================
-// UTILITY FUNCTIONS
+// Business Management
 // ============================================
 
-/**
- * Escape HTML to prevent XSS attacks
- */
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-/**
- * Generate star rating HTML
- */
-function generateStars(rating) {
-    if (!rating) return '';
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    let stars = '★'.repeat(fullStars);
-    if (hasHalfStar) stars += '½';
-    return stars;
-}
-
-/**
- * Format phone number
- */
-function formatPhoneNumber(phone) {
-    if (!phone) return '';
-    return phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
-}
-
-/**
- * Extract domain from URL
- */
-function extractDomain(url) {
-    if (!url) return '';
-    try {
-        const domain = new URL(url).hostname;
-        return domain.replace('www.', '');
-    } catch (e) {
-        return url;
-    }
-}
-
-/**
- * Show toast notification
- */
-function showToast(message, duration = 3000) {
-    const toast = document.getElementById('toast');
-    const toastMessage = document.getElementById('toastMessage');
-    toastMessage.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), duration);
-}
-
-/**
- * Debounce function
- */
-function debounce(func, delay) {
-    let timeoutId;
-    return function (...args) {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => func.apply(this, args), delay);
-    };
-}
-
-/**
- * Format date to readable string
- */
-function formatDate(date) {
-    return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    });
-}
-
-// ============================================
-// LOCAL STORAGE MANAGEMENT
-// ============================================
-
-const Storage = {
-    getBusinesses() {
-        try {
-            return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.BUSINESSES)) || [];
-        } catch {
-            return [];
-        }
-    },
-
-    saveBusinesses(businesses) {
-        localStorage.setItem(CONFIG.STORAGE_KEYS.BUSINESSES, JSON.stringify(businesses));
-    },
-
-    getContacted() {
-        try {
-            return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.CONTACTED)) || {};
-        } catch {
-            return {};
-        }
-    },
-
-    saveContacted(contacted) {
-        localStorage.setItem(CONFIG.STORAGE_KEYS.CONTACTED, JSON.stringify(contacted));
-    },
-
-    getNotes() {
-        try {
-            return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.NOTES)) || {};
-        } catch {
-            return {};
-        }
-    },
-
-    saveNotes(notes) {
-        localStorage.setItem(CONFIG.STORAGE_KEYS.NOTES, JSON.stringify(notes));
-    },
-
-    getExcluded() {
-        try {
-            return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.EXCLUDED)) || new Set();
-        } catch {
-            return new Set();
-        }
-    },
-
-    saveExcluded(excluded) {
-        localStorage.setItem(CONFIG.STORAGE_KEYS.EXCLUDED, JSON.stringify(Array.from(excluded)));
-    },
-
-    getRecentSearches() {
-        try {
-            return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.SEARCHES)) || [];
-        } catch {
-            return [];
-        }
-    },
-
-    addRecentSearch(search) {
-        const searches = this.getRecentSearches();
-        const searchStr = `${search.city}, ${search.state} - ${search.category}`;
-        const filtered = searches.filter(s => s !== searchStr);
-        const updated = [searchStr, ...filtered].slice(0, CONFIG.MAX_RECENT_SEARCHES);
-        localStorage.setItem(CONFIG.STORAGE_KEYS.SEARCHES, JSON.stringify(updated));
-    },
-
-    getTheme() {
-        return localStorage.getItem(CONFIG.STORAGE_KEYS.THEME) || 'light';
-    },
-
-    setTheme(theme) {
-        localStorage.setItem(CONFIG.STORAGE_KEYS.THEME, theme);
-    }
-};
-
-// ============================================
-// DOM ELEMENTS
-// ============================================
-
-const DOM = {
-    // Form
-    searchForm: document.getElementById('searchForm'),
-    cityInput: document.getElementById('cityInput'),
-    stateInput: document.getElementById('stateInput'),
-    categoryInput: document.getElementById('categoryInput'),
-    searchBtn: document.getElementById('searchBtn'),
-    resetBtn: document.getElementById('resetBtn'),
+function displayBusinesses(businesses) {
+    const container = document.getElementById('businessResults');
     
-    // Sections
-    emptyState: document.getElementById('emptyState'),
-    noResultsState: document.getElementById('noResultsState'),
-    resultsSection: document.getElementById('resultsSection'),
-    resultsGrid: document.getElementById('resultsGrid'),
-    filtersSection: document.getElementById('filtersSection'),
-    
-    // Stats
-    totalStat: document.getElementById('totalStat'),
-    contactedStat: document.getElementById('contactedStat'),
-    pendingStat: document.getElementById('pendingStat'),
-    resultsCount: document.getElementById('resultsCount'),
-    
-    // Controls
-    sortSelect: document.getElementById('sortSelect'),
-    contactedFilter: document.getElementById('contactedFilter'),
-    clearFiltersBtn: document.getElementById('clearFiltersBtn'),
-    exportBtn: document.getElementById('exportBtn'),
-    themeToggle: document.getElementById('themeToggle'),
-    
-    // Loading
-    loadingOverlay: document.getElementById('loadingOverlay'),
-    paginationSection: document.getElementById('paginationSection'),
-    loadMoreBtn: document.getElementById('loadMoreBtn'),
-    
-    // Modal
-    notesModal: document.getElementById('notesModal'),
-    notesTextarea: document.getElementById('notesTextarea'),
-    notesBusinessName: document.getElementById('notesBusinessName'),
-    notesBusinessAddress: document.getElementById('notesBusinessAddress'),
-    saveNotesBtn: document.getElementById('saveNotesBtn'),
-    cancelNotesBtn: document.getElementById('cancelNotesBtn'),
-    closeModal: document.getElementById('closeModal'),
-    modalOverlay: document.getElementById('modalOverlay'),
-    
-    // Confirm Modal
-    confirmModal: document.getElementById('confirmModal'),
-    confirmMessage: document.getElementById('confirmMessage'),
-    confirmActionBtn: document.getElementById('confirmActionBtn'),
-    confirmCancelBtn: document.getElementById('confirmCancelBtn'),
-    confirmOverlay: document.getElementById('confirmOverlay'),
-    
-    // Recent searches
-    recentSearches: document.getElementById('recentSearches'),
-    recentItems: document.getElementById('recentItems')
-};
-
-// ============================================
-// GOOGLE MAPS API
-// ============================================
-
-function initGoogleMaps() {
-    console.log('Initializing Google Maps API...');
-    
-    setTimeout(() => {
-        if (typeof google !== 'undefined' && google.maps) {
-            console.log('Google Maps API loaded successfully');
-            
-            // Create a dummy map element for PlacesService
-            const mapContainer = document.createElement('div');
-            mapContainer.style.display = 'none';
-            document.body.appendChild(mapContainer);
-            
-            const map = new google.maps.Map(mapContainer);
-            appState.placesService = new google.maps.places.PlacesService(map);
-            appState.mapsLoaded = true;
-            
-            console.log('PlacesService initialized');
-        } else {
-            console.error('Google Maps API not loaded');
-            showToast('Error: Google Maps API failed to load');
-        }
-    }, CONFIG.API_LOAD_DELAY);
-}
-
-// ============================================
-// SEARCH FUNCTIONALITY
-// ============================================
-
-function validateSearchInputs() {
-    const city = DOM.cityInput.value.trim();
-    const state = DOM.stateInput.value.trim();
-    const category = DOM.categoryInput.value.trim();
-    
-    let isValid = true;
-    
-    // Clear previous errors
-    document.querySelectorAll('.error-message').forEach(el => el.classList.remove('show'));
-    document.querySelectorAll('.form-input').forEach(el => el.classList.remove('error'));
-    
-    if (!city) {
-        showInputError('cityInput', 'cityError', 'City is required');
-        isValid = false;
-    }
-    if (!state) {
-        showInputError('stateInput', 'stateError', 'State is required');
-        isValid = false;
-    }
-    if (!category) {
-        showInputError('categoryInput', 'categoryError', 'Business category is required');
-        isValid = false;
-    }
-    
-    return isValid;
-}
-
-function showInputError(inputId, errorId, message) {
-    document.getElementById(inputId).classList.add('error');
-    const errorEl = document.getElementById(errorId);
-    errorEl.textContent = message;
-    errorEl.classList.add('show');
-}
-
-async function searchBusinesses(query, pageToken = null) {
-    if (!appState.mapsLoaded) {
-        showToast('Google Maps API is still loading. Please try again.');
-        console.warn('PlacesService not ready');
+    if (!businesses || businesses.length === 0) {
+        container.innerHTML = '<p class="no-results">No businesses found. Try a different search.</p>';
+        updateStats(0, 0);
         return;
     }
-    
-    appState.isSearching = true;
-    DOM.loadingOverlay.style.display = 'flex';
-    
-    console.log('Starting business search:', { query, pageToken });
-    
-    const request = {
-        query: query,
-        fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'user_ratings_total', 'photos', 'place_id', 'opening_hours'],
-        pageToken: pageToken || undefined
-    };
-    
-    appState.placesService.textSearch(request, (results, status, pagination) => {
-        console.log('Search status:', status, 'Results count:', results ? results.length : 0);
-        
-        DOM.loadingOverlay.style.display = 'none';
-        appState.isSearching = false;
-        
-        if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-            console.log('Search successful. Results:', results.length);
-            
-            const excluded = Storage.getExcluded();
-            const filtered = results.filter(r => !excluded.has(r.place_id));
-            
-            if (!pageToken) {
-                appState.businesses = filtered;
-            } else {
-                appState.businesses = [...appState.businesses, ...filtered];
-            }
-            
-            // Save businesses to localStorage
-            Storage.saveBusinesses(appState.businesses);
-            
-            appState.nextPageToken = pagination?.hasNextPage ? pagination.nextPageToken : null;
-            
-            displayResults();
-            updateStats();
-            showToast(`Found ${appState.businesses.length} businesses`);
-        } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-            console.log('No results found');
-            if (!pageToken) {
-                appState.businesses = [];
-            }
-            DOM.noResultsState.style.display = 'block';
-            DOM.resultsSection.style.display = 'none';
-            showToast('No businesses found. Try adjusting your search.');
-        } else {
-            console.error('Search error:', status);
-            const errorMessages = {
-                'OVER_QUERY_LIMIT': 'API quota exceeded. Please try again later.',
-                'REQUEST_DENIED': 'Search request was denied. Check API configuration.',
-                'INVALID_REQUEST': 'Invalid search request.',
-                'UNKNOWN_ERROR': 'An unknown error occurred.'
-            };
-            const message = errorMessages[status] || `Search error: ${status}`;
-            showToast(message);
-        }
-    });
-}
 
-// ============================================
-// RESULTS DISPLAY
-// ============================================
+    container.innerHTML = businesses.map((business, index) => {
+        const isContacted = isBusinessContacted(business.place_id);
+        const isExcluded = isBusinessExcluded(business.place_id);
+        const note = getBusinessNote(business.place_id);
 
-function displayResults() {
-    DOM.noResultsState.style.display = 'none';
-    DOM.emptyState.style.display = 'none';
-    DOM.resultsSection.style.display = 'block';
-    DOM.filtersSection.style.display = 'block';
-    
-    filterAndSortResults();
-    renderBusinessCards();
-    
-    // Update pagination
-    if (appState.nextPageToken) {
-        DOM.paginationSection.style.display = 'block';
-    } else {
-        DOM.paginationSection.style.display = 'none';
-    }
-}
-
-function filterAndSortResults() {
-    let filtered = [...appState.businesses];
-    
-    // Apply filters
-    if (appState.filterNotContacted) {
-        const contacted = Storage.getContacted();
-        filtered = filtered.filter(b => !contacted[b.place_id]);
-    }
-    
-    // Apply sorting
-    filtered.sort((a, b) => {
-        switch (appState.sortBy) {
-            case 'rating-high':
-                return (b.rating || 0) - (a.rating || 0);
-            case 'rating-low':
-                return (a.rating || 0) - (b.rating || 0);
-            case 'reviews':
-                return (b.user_ratings_total || 0) - (a.user_ratings_total || 0);
-            case 'newest':
-            default:
-                return 0;
-        }
-    });
-    
-    appState.filteredBusinesses = filtered;
-}
-
-function renderBusinessCards() {
-    DOM.resultsGrid.innerHTML = '';
-    DOM.resultsCount.textContent = `${appState.filteredBusinesses.length} results`;
-    
-    const contacted = Storage.getContacted();
-    const notes = Storage.getNotes();
-    
-    appState.filteredBusinesses.forEach(business => {
-        const isContacted = contacted[business.place_id] || false;
-        const businessNotes = notes[business.place_id] || '';
-        
-        const card = document.createElement('div');
-        card.className = 'business-card';
-        
-        // Build image HTML
-        let imageHtml = '';
-        if (business.photos && business.photos.length > 0) {
-            const photoUrl = business.photos[0].getUrl({ maxWidth: 400, maxHeight: 300 });
-            imageHtml = `<img src="${photoUrl}" alt="${escapeHtml(business.name)}" class="business-image" loading="lazy">`;
-        } else {
-            imageHtml = '<div class="business-image placeholder">🏢</div>';
-        }
-        
-        // Build rating HTML
-        let ratingHtml = '';
-        if (business.rating) {
-            ratingHtml = `
-                <div class="business-rating">
-                    <span class="stars">${generateStars(business.rating)}</span>
-                    <span class="rating-text">${business.rating.toFixed(1)} (${business.user_ratings_total || 0})</span>
-                </div>
-            `;
-        }
-        
-        // Build phone HTML
-        let phoneHtml = '';
-        if (business.formatted_phone_number) {
-            phoneHtml = `
-                <div class="business-phone">
-                    <a href="tel:${business.formatted_phone_number.replace(/\D/g, '')}">${escapeHtml(business.formatted_phone_number)}</a>
-                </div>
-            `;
-        }
-        
-        // Build website HTML
-        let websiteHtml = '';
-        if (business.website) {
-            const domain = extractDomain(business.website);
-            websiteHtml = `
-                <div class="business-website">
-                    <a href="${escapeHtml(business.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(domain)}</a>
-                </div>
-            `;
-        }
-        
-        // Build hours HTML
-        let hoursHtml = '';
-        if (business.opening_hours) {
-            const isOpen = business.opening_hours.isOpen();
-            const status = isOpen ? '✅ Open' : '❌ Closed';
-            hoursHtml = `<div class="business-hours">${status}</div>`;
-        }
-        
-        card.innerHTML = `
-            ${imageHtml}
-            <div class="business-content">
+        return `
+            <div class="business-card ${isContacted ? 'contacted' : ''} ${isExcluded ? 'excluded' : ''}">
                 <div class="business-header">
-                    <h3 class="business-name">${escapeHtml(business.name)}</h3>
-                    ${ratingHtml}
+                    <h3>${escapeHtml(business.name)}</h3>
+                    ${business.rating ? `<span class="rating">⭐ ${business.rating}</span>` : ''}
                 </div>
-                <div class="business-address">${escapeHtml(business.formatted_address || 'Address not available')}</div>
-                <div class="business-info">
-                    ${phoneHtml}
-                    ${websiteHtml}
+
+                ${business.formatted_phone_number ? `
+                    <div class="business-phone">
+                        📞 <a href="tel:${business.formatted_phone_number}">${business.formatted_phone_number}</a>
+                    </div>
+                ` : ''}
+
+                <div class="business-details">
+                    ${business.formatted_address ? `<p><strong>📍 Address:</strong> ${escapeHtml(business.formatted_address)}</p>` : ''}
+                    ${business.website ? `<p><strong>🌐 Website:</strong> <a href="${business.website}" target="_blank">Visit</a></p>` : ''}
+                    ${business.opening_hours ? `
+                        <p><strong>🕐 Hours:</strong> 
+                            ${business.opening_hours.open_now ? '<span class="open">Open</span>' : '<span class="closed">Closed</span>'}
+                        </p>
+                    ` : ''}
                 </div>
-                ${hoursHtml}
-                <div class="business-actions">
-                    <button class="action-btn contact-btn ${isContacted ? 'contacted' : ''}" data-place-id="${business.place_id}">
-                        ${isContacted ? '✅ Contacted' : '⭕ Mark Contacted'}
-                    </button>
-                    <button class="action-btn notes-btn" data-place-id="${business.place_id}" title="Add/Edit notes">
-                        ${businessNotes ? '📝 Notes' : '📄 Add Note'}
-                    </button>
-                    <button class="action-btn exclude-btn" data-place-id="${business.place_id}" title="Exclude from results">
-                        🗑️ Exclude
+
+                ${note ? `
+                    <div class="business-note">
+                        <strong>📝 Note:</strong> ${escapeHtml(note)}
+                    </div>
+                ` : ''}
+
+                <div class="business-buttons">
+                    <button class="btn-contact ${isContacted ? 'contacted' : ''}" 
+                            onclick="toggleContacted('${business.place_id}', '${escapeHtml(business.name)}')">
+                        ${isContacted ? '✓ Contacted' : 'Contact'}
                     </button>
                 </div>
             </div>
         `;
-        
-        DOM.resultsGrid.appendChild(card);
-    });
-    
-    attachCardEventListeners();
-}
+    }).join('');
 
-function attachCardEventListeners() {
-    // Contact buttons
-    document.querySelectorAll('.contact-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const placeId = this.dataset.placeId;
-            toggleContacted(placeId);
-        });
-    });
-    
-    // Notes buttons
-    document.querySelectorAll('.notes-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const placeId = this.dataset.placeId;
-            openNotesModal(placeId);
-        });
-    });
-    
-    // Exclude buttons
-    document.querySelectorAll('.exclude-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const placeId = this.dataset.placeId;
-            excludeBusiness(placeId);
-        });
-    });
+    // Update stats
+    const contactedCount = businesses.filter(b => isBusinessContacted(b.place_id)).length;
+    updateStats(businesses.length, contactedCount);
 }
 
 // ============================================
-// BUSINESS ACTIONS
+// Contact Management
 // ============================================
 
-function toggleContacted(placeId) {
-    const contacted = Storage.getContacted();
-    contacted[placeId] = !contacted[placeId];
-    Storage.saveContacted(contacted);
-    updateStats();
-    renderBusinessCards();
-    showToast(contacted[placeId] ? 'Marked as contacted' : 'Marked as not contacted');
-    console.log(`Toggled contacted status for ${placeId}`);
+function toggleContacted(placeId, businessName) {
+    const contacted = getContactedBusinesses();
+    
+    if (contacted.includes(placeId)) {
+        // Remove from contacted
+        const index = contacted.indexOf(placeId);
+        contacted.splice(index, 1);
+    } else {
+        // Add to contacted
+        contacted.push(placeId);
+    }
+    
+    localStorage.setItem('lf_contacted', JSON.stringify(contacted));
+    
+    // Re-render to show updated status
+    const searchResults = JSON.parse(localStorage.getItem('lf_businesses') || '[]');
+    displayBusinesses(searchResults);
+    
+    // Show feedback
+    const isNowContacted = contacted.includes(placeId);
+    showNotification(
+        isNowContacted 
+            ? `✅ Marked "${businessName}" as contacted` 
+            : `⟲ Removed "${businessName}" from contacted`,
+        isNowContacted ? 'success' : 'info'
+    );
 }
 
-function openNotesModal(placeId) {
-    const business = appState.businesses.find(b => b.place_id === placeId);
-    if (!business) return;
-    
-    appState.selectedBusinessForNotes = placeId;
-    DOM.notesBusinessName.textContent = business.name;
-    DOM.notesBusinessAddress.textContent = business.formatted_address || '';
-    
-    const notes = Storage.getNotes();
-    DOM.notesTextarea.value = notes[placeId] || '';
-    
-    DOM.notesModal.classList.add('active');
-    DOM.notesTextarea.focus();
+function getContactedBusinesses() {
+    return JSON.parse(localStorage.getItem('lf_contacted') || '[]');
 }
 
-function saveNotes() {
-    const placeId = appState.selectedBusinessForNotes;
-    if (!placeId) return;
-    
-    const notes = Storage.getNotes();
-    notes[placeId] = DOM.notesTextarea.value;
-    Storage.saveNotes(notes);
-    
-    closeNotesModal();
-    renderBusinessCards();
-    showToast('Notes saved successfully');
-    console.log(`Saved notes for ${placeId}`);
-}
-
-function closeNotesModal() {
-    DOM.notesModal.classList.remove('active');
-    appState.selectedBusinessForNotes = null;
-    DOM.notesTextarea.value = '';
-}
-
-function excludeBusiness(placeId) {
-    openConfirmModal('Are you sure you want to exclude this business?', () => {
-        const excluded = Storage.getExcluded();
-        excluded.add(placeId);
-        Storage.saveExcluded(excluded);
-        
-        appState.businesses = appState.businesses.filter(b => b.place_id !== placeId);
-        Storage.saveBusinesses(appState.businesses);
-        
-        displayResults();
-        updateStats();
-        showToast('Business excluded');
-        console.log(`Excluded business ${placeId}`);
-    });
+function isBusinessContacted(placeId) {
+    return getContactedBusinesses().includes(placeId);
 }
 
 // ============================================
-// STATISTICS
+// Notes Management (Keep for reference, but not displayed in UI)
 // ============================================
 
-function updateStats() {
-    const contacted = Storage.getContacted();
-    const contactedCount = appState.businesses.filter(b => contacted[b.place_id]).length;
-    const total = appState.businesses.length;
-    const notContacted = total - contactedCount;
-    
-    DOM.totalStat.textContent = total;
-    DOM.contactedStat.textContent = contactedCount;
-    DOM.pendingStat.textContent = notContacted;
-    
-    console.log('Stats updated:', { total, contacted: contactedCount, pending: notContacted });
+function getBusinessNote(placeId) {
+    const notes = JSON.parse(localStorage.getItem('lf_notes') || '{}');
+    return notes[placeId] || '';
+}
+
+function setBusinessNote(placeId, note) {
+    const notes = JSON.parse(localStorage.getItem('lf_notes') || '{}');
+    if (note.trim()) {
+        notes[placeId] = note;
+    } else {
+        delete notes[placeId];
+    }
+    localStorage.setItem('lf_notes', JSON.stringify(notes));
 }
 
 // ============================================
-// MODALS
+// Exclusion Management (Keep for reference, but not displayed in UI)
 // ============================================
 
-function openConfirmModal(message, onConfirm) {
-    DOM.confirmMessage.textContent = message;
-    DOM.confirmModal.classList.add('active');
+function getExcludedBusinesses() {
+    return JSON.parse(localStorage.getItem('lf_excluded') || '[]');
+}
+
+function isBusinessExcluded(placeId) {
+    return getExcludedBusinesses().includes(placeId);
+}
+
+function toggleExcluded(placeId, businessName) {
+    const excluded = getExcludedBusinesses();
     
-    const handler = () => {
-        onConfirm();
-        closeConfirmModal();
-        DOM.confirmActionBtn.removeEventListener('click', handler);
+    if (excluded.includes(placeId)) {
+        const index = excluded.indexOf(placeId);
+        excluded.splice(index, 1);
+    } else {
+        excluded.push(placeId);
+    }
+    
+    localStorage.setItem('lf_excluded', JSON.stringify(excluded));
+}
+
+// ============================================
+// Statistics Management
+// ============================================
+
+function updateStats(total, contacted) {
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('contactedCount').textContent = contacted;
+}
+
+// ============================================
+// Utilities
+// ============================================
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
     };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
     
-    DOM.confirmActionBtn.addEventListener('click', handler);
-}
-
-function closeConfirmModal() {
-    DOM.confirmModal.classList.remove('active');
+    const bgColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+    
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        background: ${bgColor};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        max-width: 300px;
+        font-weight: 500;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 // ============================================
-// EXPORT FUNCTIONALITY
+// Search & Map Functions
 // ============================================
 
-function exportToCSV() {
-    if (appState.businesses.length === 0) {
-        showToast('No data to export');
+let map;
+let service;
+let infoWindow;
+let markers = [];
+
+function initializeMap() {
+    map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 13,
+        center: { lat: 40.7128, lng: -74.0060 },
+        styles: [
+            { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+            { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
+            { 
+                featureType: 'water',
+                elementType: 'geometry',
+                stylers: [{ color: '#e9e9e9' }]
+            }
+        ]
+    });
+    
+    service = new google.maps.places.PlacesService(map);
+    infoWindow = new google.maps.InfoWindow();
+}
+
+function searchBusinesses() {
+    const searchTerm = document.getElementById('searchInput').value.trim();
+    const locationInput = document.getElementById('locationInput').value.trim();
+    
+    if (!searchTerm || !locationInput) {
+        showNotification('Please enter both search term and location', 'error');
         return;
     }
-    
-    const contacted = Storage.getContacted();
-    const notes = Storage.getNotes();
-    
-    // Define CSV headers
-    const headers = ['Business Name', 'Address', 'Phone', 'Website', 'Rating', 'Reviews', 'Status', 'Notes'];
-    
-    // Create CSV rows
-    const rows = appState.businesses.map(business => [
-        `"${business.name.replace(/"/g, '""')}"`,
-        `"${(business.formatted_address || '').replace(/"/g, '""')}"`,
-        `"${(business.formatted_phone_number || '').replace(/"/g, '""')}"`,
-        `"${(business.website || '').replace(/"/g, '""')}"`,
-        business.rating || '',
-        business.user_ratings_total || '',
-        contacted[business.place_id] ? 'Contacted' : 'Not Contacted',
-        `"${(notes[business.place_id] || '').replace(/"/g, '""')}"`
-    ]);
-    
-    // Combine headers and rows
-    const csv = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-    ].join('\n');
-    
-    // Download CSV
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `leadfinder_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    
-    showToast('CSV exported successfully');
-    console.log('CSV exported with', appState.businesses.length, 'businesses');
-}
 
-// ============================================
-// THEME TOGGLE
-// ============================================
+    showNotification('🔍 Searching for businesses...', 'info');
 
-function toggleTheme() {
-    const isDark = document.body.classList.toggle('dark-mode');
-    Storage.setTheme(isDark ? 'dark' : 'light');
-    updateThemeIcon();
-    console.log('Theme toggled to:', isDark ? 'dark' : 'light');
-}
+    // Geocode the location
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: locationInput }, (results, status) => {
+        if (status === 'OK') {
+            const location = results[0].geometry.location;
+            
+            // Pan map to location
+            map.setCenter(location);
+            map.setZoom(13);
+            
+            // Clear previous markers
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            
+            // Search for businesses
+            const request = {
+                location: location,
+                radius: 5000,
+                keyword: searchTerm
+            };
+            
+            service.nearbySearch(request, (results, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && results.length > 0) {
+                    // Get detailed info for each business
+                    const businessPromises = results.slice(0, 20).map(place => {
+                        return new Promise((resolve) => {
+                            service.getDetails({
+                                placeId: place.place_id,
+                                fields: [
+                                    'place_id',
+                                    'name',
+                                    'formatted_address',
+                                    'formatted_phone_number',
+                                    'website',
+                                    'rating',
+                                    'opening_hours',
+                                    'geometry'
+                                ]
+                            }, (details) => {
+                                if (details) {
+                                    resolve({
+                                        place_id: details.place_id,
+                                        name: details.name,
+                                        formatted_address: details.formatted_address,
+                                        rating: details.rating,
+                                        opening_hours: details.opening_hours,
+                                        formatted_phone_number: details.formatted_phone_number,
+                                        website: details.website,
+                                        geometry: details.geometry
+                                    });
+                                } else {
+                                    resolve(null);
+                                }
+                            });
+                        });
+                    });
 
-function updateThemeIcon() {
-    const icon = DOM.themeToggle.querySelector('.theme-icon');
-    const isDark = document.body.classList.contains('dark-mode');
-    icon.textContent = isDark ? '☀️' : '🌙';
-}
-
-// ============================================
-// RECENT SEARCHES
-// ============================================
-
-function updateRecentSearches() {
-    const searches = Storage.getRecentSearches();
-    if (searches.length === 0) {
-        DOM.recentSearches.style.display = 'none';
-        return;
-    }
-    
-    DOM.recentSearches.style.display = 'block';
-    DOM.recentItems.innerHTML = '';
-    
-    searches.forEach(search => {
-        const item = document.createElement('button');
-        item.className = 'recent-item';
-        item.textContent = search;
-        item.type = 'button';
-        item.addEventListener('click', () => {
-            const [location, category] = search.split(' - ');
-            const [city, state] = location.split(', ');
-            DOM.cityInput.value = city;
-            DOM.stateInput.value = state;
-            DOM.categoryInput.value = category;
-            DOM.searchForm.dispatchEvent(new Event('submit'));
-        });
-        DOM.recentItems.appendChild(item);
+                    Promise.all(businessPromises).then(businesses => {
+                        const validBusinesses = businesses.filter(b => b !== null);
+                        
+                        if (validBusinesses.length > 0) {
+                            // Save and display
+                            localStorage.setItem('lf_businesses', JSON.stringify(validBusinesses));
+                            displayBusinesses(validBusinesses);
+                            
+                            // Add markers to map
+                            validBusinesses.forEach(business => {
+                                const marker = new google.maps.Marker({
+                                    position: business.geometry.location,
+                                    map: map,
+                                    title: business.name
+                                });
+                                
+                                marker.addListener('click', () => {
+                                    infoWindow.setContent(`
+                                        <div style="padding: 10px; max-width: 200px;">
+                                            <h3 style="margin: 0 0 5px 0; font-size: 1em;">${escapeHtml(business.name)}</h3>
+                                            ${business.formatted_phone_number ? `<p style="margin: 5px 0; font-size: 0.9em;">📞 ${business.formatted_phone_number}</p>` : ''}
+                                            ${business.rating ? `<p style="margin: 5px 0; font-size: 0.9em;">⭐ ${business.rating}</p>` : ''}
+                                        </div>
+                                    `);
+                                    infoWindow.open(map, marker);
+                                });
+                                
+                                markers.push(marker);
+                            });
+                            
+                            showNotification(`✅ Found ${validBusinesses.length} businesses`, 'success');
+                        } else {
+                            showNotification('No detailed business information found', 'error');
+                        }
+                    });
+                } else {
+                    showNotification('❌ No businesses found. Try a different search.', 'error');
+                }
+            });
+        } else {
+            showNotification('❌ Location not found. Please try another address.', 'error');
+        }
     });
 }
 
 // ============================================
-// EVENT LISTENERS
+// Event Listeners
 // ============================================
 
-// Search form
-DOM.searchForm.addEventListener('submit', (e) => {
-    e.preventDefault();
+document.addEventListener('DOMContentLoaded', () => {
+    // Allow Enter key to trigger search
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') searchBusinesses();
+    });
     
-    if (!validateSearchInputs()) return;
-    
-    const city = DOM.cityInput.value.trim();
-    const state = DOM.stateInput.value.trim();
-    const category = DOM.categoryInput.value.trim();
-    
-    appState.currentSearch = { city, state, category };
-    Storage.addRecentSearch({ city, state, category });
-    updateRecentSearches();
-    
-    const query = `${category} in ${city}, ${state}`;
-    console.log('Search initiated:', query);
-    
-    appState.nextPageToken = null;
-    searchBusinesses(query);
+    document.getElementById('locationInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') searchBusinesses();
+    });
 });
 
-DOM.resetBtn.addEventListener('click', () => {
-    DOM.cityInput.value = '';
-    DOM.stateInput.value = '';
-    DOM.categoryInput.value = '';
-    appState.businesses = [];
-    appState.filteredBusinesses = [];
-    DOM.resultsSection.style.display = 'none';
-    DOM.filtersSection.style.display = 'none';
-    DOM.noResultsState.style.display = 'none';
-    DOM.emptyState.style.display = 'block';
-    updateStats();
-});
-
-// Filters
-DOM.sortSelect.addEventListener('change', (e) => {
-    appState.sortBy = e.target.value;
-    displayResults();
-});
-
-DOM.contactedFilter.addEventListener('change', (e) => {
-    appState.filterNotContacted = e.target.checked;
-    displayResults();
-});
-
-DOM.clearFiltersBtn.addEventListener('click', () => {
-    DOM.sortSelect.value = 'newest';
-    DOM.contactedFilter.checked = false;
-    appState.sortBy = 'newest';
-    appState.filterNotContacted = false;
-    displayResults();
-});
-
-// Load More
-DOM.loadMoreBtn.addEventListener('click', () => {
-    if (appState.nextPageToken && !appState.isSearching) {
-        const query = `${appState.currentSearch.category} in ${appState.currentSearch.city}, ${appState.currentSearch.state}`;
-        searchBusinesses(query, appState.nextPageToken);
-    }
-});
-
-// Export
-DOM.exportBtn.addEventListener('click', exportToCSV);
-
-// Theme
-DOM.themeToggle.addEventListener('click', toggleTheme);
-
-// Modal controls
-DOM.closeModal.addEventListener('click', closeNotesModal);
-DOM.cancelNotesBtn.addEventListener('click', closeNotesModal);
-DOM.saveNotesBtn.addEventListener('click', saveNotes);
-DOM.modalOverlay.addEventListener('click', closeNotesModal);
-
-DOM.confirmCancelBtn.addEventListener('click', closeConfirmModal);
-DOM.confirmOverlay.addEventListener('click', closeConfirmModal);
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        closeNotesModal();
-        closeConfirmModal();
-    }
-    if (e.key === 'Enter' && e.ctrlKey) {
-        if (DOM.notesModal.classList.contains('active')) {
-            saveNotes();
-        }
-    }
-});
-
-// ============================================
-// INITIALIZATION
-// ============================================
-
-function initApp() {
-    console.log('Initializing LeadFinder Pro...');
+// Initialize on page load
+window.addEventListener('load', () => {
+    initializeMap();
     
-    // Load theme preference
-    const theme = Storage.getTheme();
-    if (theme === 'dark') {
-        document.body.classList.add('dark-mode');
-    }
-    updateThemeIcon();
-    
-    // Initialize Google Maps
-    initGoogleMaps();
-    
-    // Load and display recent searches
-    updateRecentSearches();
-    
-    // Initialize stats
-    updateStats();
-    
-    // Restore previous search if exists
-    const saved = Storage.getBusinesses();
+    // Load and display previously saved businesses
+    const saved = JSON.parse(localStorage.getItem('lf_businesses') || '[]');
     if (saved.length > 0) {
-        appState.businesses = saved;
-        appState.filteredBusinesses = saved;
+        displayBusinesses(saved);
     }
-    
-    console.log('LeadFinder Pro initialized successfully');
-}
-
-// Start the app when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initApp);
-} else {
-    initApp();
-}
-
-// ============================================
-// END OF APPLICATION
-// ============================================
+});
